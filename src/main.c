@@ -39,6 +39,9 @@ static const struct gpio_dt_spec temperature_sw =
 void us_pressure_func(void *d0, void *d1, void *d2);
 void us_ultrasonic_func(void *d0, void *d1, void *d2);
 void us_temperature_func(void *d0, void *d1, void *d2);
+int pressure_enable(uint8_t value);
+int ultrasonic_enable(uint8_t value);
+int temperature_enable(uint8_t value);
 
 #define US_PRESSURE_STACK 1024
 #define US_ULTRASONIC_STACK 1024
@@ -60,11 +63,8 @@ static k_tid_t us_temperature_tid;
 //K_THREAD_DEFINE(us_ultrasonic_tid, US_ULTRASONIC_STACK, us_ultrasonic_func, NULL, NULL, NULL, K_LOWEST_APPLICATION_THREAD_PRIO, 0, 0);
 //K_THREAD_DEFINE(us_temperature_tid, US_TEMPERATURE_STACK, us_temperature_func, NULL, NULL, NULL, K_LOWEST_APPLICATION_THREAD_PRIO, 0, 0);
 static uint32_t pressure_value = 0;
-static bool pressure_update = false;
 static uint32_t ultrasonic_value = 0;
-static bool ultrasonic_update = false;
 static int32_t temperature_value[ODL_temperatureValue_arrayLength] = {0};
-static bool temperature_update = false;
 
 #define DT_SPEC_AND_COMMA(node_id, prop, idx) \
 	ADC_DT_SPEC_GET_BY_IDX(node_id, idx),
@@ -308,7 +308,7 @@ void us_temperature_func(void *d0, void *d1, void *d2) {
 		w1_uint64_to_rom(rom_address[1], &w1rom[1]);
 		w1_rom_to_sensor_value(&w1rom[1], &value[1]);
 	}
-	bool set_update = false;
+	// bool set_update = false;
     while(us_temperature_loop) {
 		//set_update = false;
 		for (int i=0;i<2;i++) {
@@ -339,19 +339,54 @@ void us_temperature_func(void *d0, void *d1, void *d2) {
 static CO_SDO_abortCode_t odf_2102(CO_ODF_arg_t *odf_arg)
 {
 	uint8_t value;
-	int err;
 
 	value = *(odf_arg->data);
 	
+	if (!pressure_enable(value)) {
+		return CO_SDO_AB_GENERAL;
+	}
+	return CO_SDO_AB_NONE;
+}
+
+// Enable ultrasonic thread
+static CO_SDO_abortCode_t odf_2107(CO_ODF_arg_t *odf_arg)
+{
+	uint8_t value;
+
+	value = *(odf_arg->data);
+
+	if (!ultrasonic_enable(value)) {
+		return CO_SDO_AB_GENERAL;
+	}
+    return CO_SDO_AB_NONE;
+}
+
+// Enable temperature thread
+static CO_SDO_abortCode_t odf_2110(CO_ODF_arg_t *odf_arg)
+{
+	uint8_t value;
+
+	value = *(odf_arg->data);
+	
+	if (!temperature_enable(value)) {
+		return CO_SDO_AB_GENERAL;
+	}
+    return CO_SDO_AB_NONE;
+}
+
+int pressure_enable(uint8_t value)
+{
+	int err;
+
 	if (!gpio_is_ready_dt(&pressure_sw)) {
 		LOG_ERR("The pressure switch pin GPIO port is not ready.\n");
-		return CO_SDO_AB_GENERAL;
+		return -1;
 	}
     if (value != 0) {
 		err = gpio_pin_set_dt(&pressure_sw, 1);
 		if (err != 0) {
 			LOG_ERR("Configuring pressure switch GPIO pin failed: %d\n", err);
-    		return CO_SDO_AB_GENERAL;
+    		return -1;
 		}
 		us_pressure_loop = true;
 		us_pressure_tid = k_thread_create(&us_pressure_thread, us_pressure_stack_area,
@@ -364,29 +399,25 @@ static CO_SDO_abortCode_t odf_2102(CO_ODF_arg_t *odf_arg)
 		err = gpio_pin_set_dt(&pressure_sw, 0);
 		if (err != 0) {
 			LOG_ERR("Setting pressure switch GPIO pin level failed: %d\n", err);
-    		return CO_SDO_AB_GENERAL;
+    		return -1;
 		}
     }
-    return CO_SDO_AB_NONE;
+	return 0;
 }
 
-// Enable ultrasonic thread
-static CO_SDO_abortCode_t odf_2107(CO_ODF_arg_t *odf_arg)
+int ultrasonic_enable(uint8_t value)
 {
-	uint8_t value;
 	int err;
 
-	value = *(odf_arg->data);
-	
 	if (!gpio_is_ready_dt(&ultrasonic_sw)) {
 		LOG_ERR("The ultrasonic switch pin GPIO port is not ready.\n");
-		return CO_SDO_AB_GENERAL;
+		return -1;
 	}
     if (value != 0) {
 		err = gpio_pin_set_dt(&ultrasonic_sw, 1);
 		if (err != 0) {
 			LOG_ERR("Configuring ultrasonic switch GPIO pin failed: %d\n", err);
-    		return CO_SDO_AB_GENERAL;
+    		return -1;
 		}
 		us_ultrasonic_loop = true;
 		us_ultrasonic_tid = k_thread_create(&us_ultrasonic_thread, us_ultrasonic_stack_area,
@@ -399,29 +430,25 @@ static CO_SDO_abortCode_t odf_2107(CO_ODF_arg_t *odf_arg)
 		err = gpio_pin_set_dt(&ultrasonic_sw, 0);
 		if (err != 0) {
 			LOG_ERR("Setting ultrasonic switch GPIO pin level failed: %d\n", err);
-    		return CO_SDO_AB_GENERAL;
+    		return -1;
 		}
     }
-    return CO_SDO_AB_NONE;
+    return 0;
 }
 
-// Enable temperature thread
-static CO_SDO_abortCode_t odf_2110(CO_ODF_arg_t *odf_arg)
+int temperature_enable(uint8_t value)
 {
-	uint8_t value;
 	int err;
-
-	value = *(odf_arg->data);
 	
 	if (!gpio_is_ready_dt(&temperature_sw)) {
 		LOG_ERR("The temperature switch pin GPIO port is not ready.\n");
-		return CO_SDO_AB_GENERAL;
+		return -1;
 	}
     if (value != 0) {
 		err = gpio_pin_set_dt(&temperature_sw, 1);
 		if (err != 0) {
 			LOG_ERR("Configuring temperature switch GPIO pin failed: %d\n", err);
-    		return CO_SDO_AB_GENERAL;
+    		return -1;
 		}
 		us_temperature_loop = true;
 		us_temperature_tid = k_thread_create(&us_temperature_thread, us_temperature_stack_area,
@@ -434,12 +461,11 @@ static CO_SDO_abortCode_t odf_2110(CO_ODF_arg_t *odf_arg)
 		err = gpio_pin_set_dt(&temperature_sw, 0);
 		if (err != 0) {
 			LOG_ERR("Setting temperature switch GPIO pin level failed: %d\n", err);
-    		return CO_SDO_AB_GENERAL;
+    		return -1;
 		}
     }
-    return CO_SDO_AB_NONE;
+    return 0;
 }
-
 /**
  * @brief Main application entry point.
  *
@@ -484,10 +510,6 @@ int main(void)
 	while (reset != CO_RESET_APP) {
 		elapsed =  0U; /* milliseconds */
 
-		OD_pressureEnable = 0;
-		OD_ultrasonicEnable = 0;
-		OD_temperatureEnable = 0;
-
 		LOG_INF("CANopen stack initialize");
 		err = CO_init(&can, CONFIG_CANOPEN_NODE_ID, CAN_BITRATE);
 		if (err != CO_ERROR_NO) {
@@ -513,6 +535,10 @@ int main(void)
 			canopen_program_download_attach(CO->NMT, CO->SDO[0],
 							CO->em);
 		}
+
+		pressure_enable(OD_pressureEnable);
+		ultrasonic_enable(OD_ultrasonicEnable);
+		temperature_enable(OD_temperatureEnable);
 
 		CO_CANsetNormalMode(CO->CANmodule[0]);
 

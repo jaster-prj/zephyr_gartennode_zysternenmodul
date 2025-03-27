@@ -8,8 +8,8 @@ Description=
 CreationTime=2:52PM
 CreationDate=09-18-2019
 CreatedBy=
-ModificationTime=4:36PM
-ModificationDate=03-13-2025
+ModificationTime=9:47PM
+ModificationDate=03-27-2025
 ModifiedBy=
 
 [DeviceInfo]
@@ -313,7 +313,7 @@ ObjectType=0x7
 ;StorageLocation=ROM
 DataType=0x0009
 AccessType=const
-DefaultValue=0.0.17
+DefaultValue=0.0.19
 PDOMapping=0
 
 [1010]
@@ -1768,7 +1768,7 @@ ObjectType=0x7
 ;StorageLocation=ROM
 DataType=0x0007
 AccessType=rw
-DefaultValue=0x00000000
+DefaultValue=0x00000001
 PDOMapping=0
 
 [ManufacturerObjects]
@@ -1856,7 +1856,7 @@ ObjectType=0x7
 ;StorageLocation=RAM
 DataType=0x0005
 AccessType=rw
-DefaultValue=0
+DefaultValue=1
 PDOMapping=1
 
 [2108]
@@ -1883,7 +1883,7 @@ ObjectType=0x7
 ;StorageLocation=RAM
 DataType=0x0005
 AccessType=rw
-DefaultValue=0
+DefaultValue=1
 PDOMapping=1
 
 [2111]
