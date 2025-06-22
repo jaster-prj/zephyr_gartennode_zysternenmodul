@@ -59,9 +59,6 @@ static _thread_t us_temperature_thread;
 static k_tid_t us_pressure_tid;
 static k_tid_t us_ultrasonic_tid;
 static k_tid_t us_temperature_tid;
-//K_THREAD_DEFINE(us_pressure_tid, US_PRESSURE_STACK, us_pressure_func, NULL, NULL, NULL, K_LOWEST_APPLICATION_THREAD_PRIO, 0, 0);
-//K_THREAD_DEFINE(us_ultrasonic_tid, US_ULTRASONIC_STACK, us_ultrasonic_func, NULL, NULL, NULL, K_LOWEST_APPLICATION_THREAD_PRIO, 0, 0);
-//K_THREAD_DEFINE(us_temperature_tid, US_TEMPERATURE_STACK, us_temperature_func, NULL, NULL, NULL, K_LOWEST_APPLICATION_THREAD_PRIO, 0, 0);
 static uint32_t pressure_value = 0;
 static uint32_t ultrasonic_value = 0;
 static int32_t temperature_value[ODL_temperatureValue_arrayLength] = {0};
@@ -558,26 +555,6 @@ int main(void)
 				if (ret) {
 					LOG_ERR("failed to save EEPROM");
 				}
-				// if pressure_update {
-				// 	CO_LOCK_OD();
-				// 	OD_pressureMeasurement = pressure_value;
-				// 	CO_UNLOCK_OD();
-				// 	pressure_update = false;
-				// }
-				// if ultrasonic_update {
-				// 	CO_LOCK_OD();
-				// 	OD_ultrasonicDistance = ultrasonic_value;
-				// 	CO_UNLOCK_OD();
-				// 	ultrasonic_update = false;
-				// }
-				// if temperature_update {
-				// 	for (i=0;i<ODL_temperatureValue_arrayLength;i++) {
-				// 		CO_LOCK_OD();
-				// 		OD_temperatureValue[i] = temperature_value[i];
-				// 		CO_UNLOCK_OD();
-				// 	}
-				// 	temperature_update = false;
-				// }
 #endif /* CONFIG_CANOPENNODE_STORAGE */
 				/*
 				 * Try to sleep for as long as the
