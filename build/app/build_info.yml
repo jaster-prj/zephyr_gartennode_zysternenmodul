@@ -1,0 +1,66 @@
+cmake:
+  application:
+    configuration-dir: '/workspace/application'
+    source-dir: '/workspace/application'
+  board:
+    name: 'gartennode'
+    path:
+     - '/workspace/application/boards/st/gartennode'
+    qualifiers: 'stm32l431xx'
+    revision: ''
+  devicetree:
+    bindings-dirs:
+     - '/workspace/application/dts/bindings'
+     - '/workspace/zephyr/dts/bindings'
+    files:
+     - '/workspace/application/boards/st/gartennode/gartennode.dts'
+     - '/workspace/application/boards/gartennode.overlay'
+    include-dirs:
+     - '/workspace/modules/hal/ambiq/dts'
+     - '/workspace/modules/hal/atmel/include'
+     - '/workspace/modules/hal/bouffalolab/include'
+     - '/workspace/modules/hal/bouffalolab/include/zephyr'
+     - '/workspace/modules/hal/gigadevice/include'
+     - '/workspace/modules/hal/microchip/include'
+     - '/workspace/modules/hal/microchip/dts'
+     - '/workspace/modules/hal/nuvoton/dts'
+     - '/workspace/modules/hal/nxp/dts'
+     - '/workspace/modules/hal/stm32/dts'
+     - '/workspace/modules/hal/ti/dts'
+     - '/workspace/application/dts'
+     - '/workspace/zephyr/include'
+     - '/workspace/zephyr/include/zephyr'
+     - '/workspace/zephyr/dts/common'
+     - '/workspace/zephyr/dts/vendor'
+     - '/workspace/zephyr/dts/rx'
+     - '/workspace/zephyr/dts/x86'
+     - '/workspace/zephyr/dts/xtensa'
+     - '/workspace/zephyr/dts/sparc'
+     - '/workspace/zephyr/dts/riscv'
+     - '/workspace/zephyr/dts/posix'
+     - '/workspace/zephyr/dts/arm64'
+     - '/workspace/zephyr/dts/arm'
+     - '/workspace/zephyr/dts/arc'
+     - '/workspace/zephyr/dts'
+    user-files:
+     - '/workspace/application/boards/gartennode.overlay'
+  kconfig:
+    extra-user-files:
+     - 'prj.conf'
+    files:
+     - '/workspace/application/boards/st/gartennode/gartennode_defconfig'
+     - '/workspace/application/prj.conf'
+     - '/workspace/application/prj.conf'
+    user-files:
+     - '/workspace/application/prj.conf'
+  toolchain:
+    name: 'zephyr'
+    path: '/opt/zephyr-sdk-1.0.1'
+  zephyr:
+    version: '4.4.1'
+    zephyr-base: '/workspace/zephyr'
+version: '0.1.0'
+west:
+  command: '/opt/venv/bin/west build -b gartennode application --build-dir application/build/app/ -- -DEXTRA_CONF_FILE=prj.conf'
+  topdir: '/workspace'
+  version: '1.5.0'
