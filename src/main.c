@@ -11,6 +11,8 @@
 #include <zephyr/settings/settings.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/drivers/sensor/w1_sensor.h>
+#include <zephyr/storage/flash_map.h>
+#include <zephyr/sys/printk.h>
 #include <canopennode.h>
 
 #define LOG_LEVEL CONFIG_CANOPEN_LOG_LEVEL
@@ -71,6 +73,9 @@ static const struct adc_dt_spec adc_channels[] = {
 			     DT_SPEC_AND_COMMA)
 };
 
+#define STORAGE_PARTITION	storage_partition
+#define STORAGE_PARTITION_ID	FIXED_PARTITION_ID(STORAGE_PARTITION)
+
 #define CAN_INTERFACE DEVICE_DT_GET(DT_CHOSEN(zephyr_canbus))
 #define CAN_BITRATE (DT_PROP_OR(DT_CHOSEN(zephyr_canbus), bitrate, \
 					  DT_PROP_OR(DT_CHOSEN(zephyr_canbus), bus_speed, \
@@ -85,6 +90,19 @@ struct led_indicator {
 	const struct device *dev;
 	gpio_pin_t pin;
 };
+
+/**
+ * @brief Watchdog callback function
+ *
+ * @param channel_id Watchdog channel ID
+ * @param user_data Pointer to user data (thread ID)
+ */
+static void main_watchdog_callback(int channel_id, void *user_data)
+{
+    LOG_ERR("Watchdog channel %d callback, user data: %p",
+        channel_id, k_thread_name_get((k_tid_t)user_data));
+	sys_reboot(SYS_REBOOT_COLD);
+}
 
 /**
  * @brief Callback for setting LED indicator state.
@@ -488,11 +506,25 @@ int main(void)
 	}
 
 #ifdef CONFIG_CANOPENNODE_STORAGE
+	LOG_INF("Initializing settings subsystem\n");
 	ret = settings_subsys_init();
 	if (ret) {
 		LOG_ERR("failed to initialize settings subsystem (err = %d)",
 			ret);
-		return 0;
+		int error = 0;
+		const struct flash_area *storage = NULL;
+		// Open the partition
+		error = flash_area_open(PARTITION_ID(storage_partition), &storage);
+		if (error < 0) {
+			return error;
+		}
+
+		// Erase the first sector (e.g., 4KB)
+		error = flash_area_erase(storage, 0, PARTITION_SIZE(storage_partition));
+		if (error < 0) {
+			return error;
+		}
+		sys_reboot(SYS_REBOOT_COLD);
 	}
 
 	ret = settings_load();
@@ -538,6 +570,7 @@ int main(void)
 		temperature_enable(OD_temperatureEnable);
 
 		CO_CANsetNormalMode(CO->CANmodule[0]);
+		struct sCO_OD_EEPROM eeprom_old = CO_OD_EEPROM;
 
 		while (true) {
 			timeout = 1U; /* default timeout in milliseconds */
@@ -550,10 +583,15 @@ int main(void)
 
 			if (timeout > 0) {
 #ifdef CONFIG_CANOPENNODE_STORAGE
-				ret = canopen_storage_save(
-					CANOPEN_STORAGE_EEPROM);
-				if (ret) {
-					LOG_ERR("failed to save EEPROM");
+				ret = memcmp(&eeprom_old, &CO_OD_EEPROM, sizeof(CO_OD_EEPROM));
+				if (ret != 0) {
+					LOG_DBG("EEPROM changed, saving to flash");
+					memcpy(&eeprom_old, &CO_OD_EEPROM, sizeof(CO_OD_EEPROM));
+					ret = canopen_storage_save(
+						CANOPEN_STORAGE_EEPROM);
+					if (ret) {
+						LOG_ERR("failed to save EEPROM");
+					}
 				}
 #endif /* CONFIG_CANOPENNODE_STORAGE */
 				/*

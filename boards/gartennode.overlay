@@ -35,7 +35,7 @@
 	};
     us0: HC-SR04 {
         compatible = "hc-sr04";
-        trig-gpios = <&gpioa 4 GPIO_ACTIVE_HIGH>;
+        trigger-gpios = <&gpioa 4 GPIO_ACTIVE_HIGH>;
         echo-gpios = <&gpioa 5 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
         status = "okay";
     };
@@ -66,7 +66,7 @@
 	/* pinctrl-0 = <&adc1_in5_pa0 &adc1_in6_pa1 &adc1_in7_pa2 &adc1_in8_pa3 &adc1_in9_pa4 &adc1_in10_pa5 &adc1_in11_pa6 &adc1_in12_pa7>; */
 	pinctrl-0 = <&adc1_in8_pa3>;
 	pinctrl-names = "default";
-	st,adc-clock-source = <SYNC>;
+	st,adc-clock-source = "SYNC";
 	st,adc-prescaler = <4>;
 	status = "okay";
 

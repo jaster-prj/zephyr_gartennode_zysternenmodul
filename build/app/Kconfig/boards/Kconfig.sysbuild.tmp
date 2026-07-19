@@ -1,0 +1,2 @@
+# Load Sysbuild board Kconfig descriptions.
+osource "/workspace/application/boards/st/gartennode/Kconfig.sysbuild"
