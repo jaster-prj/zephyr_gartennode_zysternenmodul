@@ -27,6 +27,11 @@ jobs:
           west update
           west zephyr-export
           /opt/venv/bin/python -m pip install -r zephyr/scripts/requirements.txt
+      - name: Clone Application
+        uses: actions/checkout@v7
+        with:
+          path: './zephyr_workspace/application'
+          submodules: recursive
       - name: save gartennode.pem
         working-directory: ./zephyr_workspace/bootloader/mcuboot
         run: |
