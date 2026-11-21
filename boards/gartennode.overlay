@@ -59,6 +59,16 @@
 	};
 };
 
+/*
+ * The ADC clock belongs to the common controller in Zephyr 4.5.
+ * This path also selects adc1 itself with the flat layout in Zephyr 4.4.
+ */
+&{/soc/adc@50040000} {
+	st,adc-clock-source = "SYNC";
+	st,adc-prescaler = <4>;
+	status = "okay";
+};
+
 &adc1 {
 	#address-cells = <1>;
 	#size-cells = <0>;
@@ -66,8 +76,6 @@
 	/* pinctrl-0 = <&adc1_in5_pa0 &adc1_in6_pa1 &adc1_in7_pa2 &adc1_in8_pa3 &adc1_in9_pa4 &adc1_in10_pa5 &adc1_in11_pa6 &adc1_in12_pa7>; */
 	pinctrl-0 = <&adc1_in8_pa3>;
 	pinctrl-names = "default";
-	st,adc-clock-source = "SYNC";
-	st,adc-prescaler = <4>;
 	status = "okay";
 
 	channel@8 {

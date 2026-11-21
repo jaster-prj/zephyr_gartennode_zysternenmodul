@@ -4,488 +4,94 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr/kernel.h>
-#include <zephyr/drivers/gpio.h>
-#include <zephyr/sys/reboot.h>
-#include <zephyr/drivers/adc.h>
-#include <zephyr/settings/settings.h>
-#include <zephyr/drivers/sensor.h>
-#include <zephyr/drivers/sensor/w1_sensor.h>
-#include <zephyr/storage/flash_map.h>
-#include <zephyr/sys/printk.h>
-#include <canopennode.h>
+#if defined(CONFIG_BOARD_NATIVE_SIM)
+#define _POSIX_C_SOURCE 200809L
+#include <time.h>
+#endif
 
-#define LOG_LEVEL CONFIG_CANOPEN_LOG_LEVEL
+#include <zephyr/kernel.h>
+#include <zephyr/drivers/can.h>
+#include <zephyr/sys/reboot.h>
+#include <zephyr/settings/settings.h>
+#include <zephyr/storage/flash_map.h>
+#include <canopennode.h>
+#include <string.h>
+
+#include "led.h"
+#include "sensor.h"
+#if defined(CONFIG_BOARD_NATIVE_SIM)
+#include "native_sim_cistern.h"
+#endif
+
+#define LOG_LEVEL CONFIG_CANOPENNODE_LOG_LEVEL
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(app);
-
-
-#if !DT_NODE_EXISTS(DT_NODELABEL(pressure_sw))
-#error "Overlay for pressure_sw output node not properly defined."
-#endif
-#if !DT_NODE_EXISTS(DT_NODELABEL(ultrasonic_sw))
-#error "Overlay for pressure_sw output node not properly defined."
-#endif
-#if !DT_NODE_EXISTS(DT_NODELABEL(temperature_sw))
-#error "Overlay for pressure_sw output node not properly defined."
-#endif
-
-static const struct gpio_dt_spec pressure_sw =
-	GPIO_DT_SPEC_GET_OR(DT_NODELABEL(pressure_sw), gpios, {0});
-static const struct gpio_dt_spec ultrasonic_sw =
-	GPIO_DT_SPEC_GET_OR(DT_NODELABEL(ultrasonic_sw), gpios, {0});
-static const struct gpio_dt_spec temperature_sw =
-	GPIO_DT_SPEC_GET_OR(DT_NODELABEL(temperature_sw), gpios, {0});
-
-
-void us_pressure_func(void *d0, void *d1, void *d2);
-void us_ultrasonic_func(void *d0, void *d1, void *d2);
-void us_temperature_func(void *d0, void *d1, void *d2);
-int pressure_enable(uint8_t value);
-int ultrasonic_enable(uint8_t value);
-int temperature_enable(uint8_t value);
-
-#define US_PRESSURE_STACK 1024
-#define US_ULTRASONIC_STACK 1024
-#define US_TEMPERATURE_STACK 1024
-
-static bool us_pressure_loop = false;
-static bool us_ultrasonic_loop = false;
-static bool us_temperature_loop = false;
-K_THREAD_STACK_DEFINE(us_pressure_stack_area, US_PRESSURE_STACK);
-K_THREAD_STACK_DEFINE(us_ultrasonic_stack_area, US_ULTRASONIC_STACK);
-K_THREAD_STACK_DEFINE(us_temperature_stack_area, US_TEMPERATURE_STACK);
-static _thread_t us_pressure_thread;
-static _thread_t us_ultrasonic_thread;
-static _thread_t us_temperature_thread;
-static k_tid_t us_pressure_tid;
-static k_tid_t us_ultrasonic_tid;
-static k_tid_t us_temperature_tid;
-static uint32_t pressure_value = 0;
-static uint32_t ultrasonic_value = 0;
-static int32_t temperature_value[ODL_temperatureValue_arrayLength] = {0};
-
-#define DT_SPEC_AND_COMMA(node_id, prop, idx) \
-	ADC_DT_SPEC_GET_BY_IDX(node_id, idx),
-
-static const struct adc_dt_spec adc_channels[] = {
-	DT_FOREACH_PROP_ELEM(DT_PATH(zephyr_user), io_channels,
-			     DT_SPEC_AND_COMMA)
-};
-
-#define STORAGE_PARTITION	storage_partition
-#define STORAGE_PARTITION_ID	FIXED_PARTITION_ID(STORAGE_PARTITION)
 
 #define CAN_INTERFACE DEVICE_DT_GET(DT_CHOSEN(zephyr_canbus))
 #define CAN_BITRATE (DT_PROP_OR(DT_CHOSEN(zephyr_canbus), bitrate, \
 					  DT_PROP_OR(DT_CHOSEN(zephyr_canbus), bus_speed, \
 						     CONFIG_CAN_DEFAULT_BITRATE)) / 1000)
 
-static struct gpio_dt_spec led_green_gpio = GPIO_DT_SPEC_GET_OR(
-		DT_ALIAS(green_led), gpios, {0});
-static struct gpio_dt_spec led_red_gpio = GPIO_DT_SPEC_GET_OR(
-		DT_ALIAS(red_led), gpios, {0});
+#if defined(CONFIG_BOARD_NATIVE_SIM)
+K_SEM_DEFINE(native_sim_can_rx_wakeup, 0, 1);
 
-struct led_indicator {
-	const struct device *dev;
-	gpio_pin_t pin;
-};
-
-/**
- * @brief Watchdog callback function
- *
- * @param channel_id Watchdog channel ID
- * @param user_data Pointer to user data (thread ID)
- */
-static void main_watchdog_callback(int channel_id, void *user_data)
+static int64_t native_sim_monotonic_ms(void)
 {
-    LOG_ERR("Watchdog channel %d callback, user data: %p",
-        channel_id, k_thread_name_get((k_tid_t)user_data));
-	sys_reboot(SYS_REBOOT_COLD);
+	struct timespec now;
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return (int64_t)now.tv_sec * 1000 + now.tv_nsec / 1000000;
 }
 
-/**
- * @brief Callback for setting LED indicator state.
- *
- * @param value true if the LED indicator shall be turned on, false otherwise.
- * @param arg argument that was passed when LEDs were initialized.
- */
-static void led_callback(bool value, void *arg)
+static void native_sim_can_bus_activity(const struct device *dev,
+					struct can_frame *frame, void *user_data)
 {
-	struct gpio_dt_spec *led_gpio = arg;
-
-	if (!led_gpio || !led_gpio->port) {
-		return;
-	}
-
-	gpio_pin_set_dt(led_gpio, value);
+	ARG_UNUSED(dev);
+	ARG_UNUSED(frame);
+	ARG_UNUSED(user_data);
+	k_sem_give(&native_sim_can_rx_wakeup);
 }
+#endif
 
-/**
- * @brief Configure LED indicators pins and callbacks.
- *
- * This routine configures the GPIOs for the red and green LEDs (if
- * available).
- *
- * @param nmt CANopenNode NMT object.
- */
-static void config_leds(CO_NMT_t *nmt)
+static void initialize(void)
 {
-	int err;
-
-	if (!led_green_gpio.port) {
-		LOG_INF("Green LED not available");
-	} else if (!gpio_is_ready_dt(&led_green_gpio)) {
-		LOG_ERR("Green LED device not ready");
-		led_green_gpio.port = NULL;
-	} else {
-		err = gpio_pin_configure_dt(&led_green_gpio,
-					    GPIO_OUTPUT_INACTIVE);
-		if (err) {
-			LOG_ERR("failed to configure Green LED gpio: %d", err);
-			led_green_gpio.port = NULL;
-		}
+	if (led_init() != 0) {
+		LOG_ERR("LED initialization failed");
 	}
-
-	if (!led_red_gpio.port) {
-		LOG_INF("Red LED not available");
-	} else if (!gpio_is_ready_dt(&led_red_gpio)) {
-		LOG_ERR("Red LED device not ready");
-		led_red_gpio.port = NULL;
-	} else {
-		err = gpio_pin_configure_dt(&led_red_gpio,
-					    GPIO_OUTPUT_INACTIVE);
-		if (err) {
-			LOG_ERR("failed to configure Red LED gpio: %d", err);
-			led_red_gpio.port = NULL;
-		}
+	if (sensor_init() != 0) {
+		LOG_ERR("Sensor initialization failed");
 	}
-
-	canopen_leds_init(nmt,
-			  led_callback, &led_green_gpio,
-			  led_callback, &led_red_gpio);
 }
 
-/**
- * @brief Configure LED indicators pins and callbacks.
- *
- * This routine configures the GPIOs for the red and green LEDs (if
- * available).
- *
- * @param nmt CANopenNode NMT object.
- */
-static void config_powerstates()
+static CO_SDO_abortCode_t set_sensor_enable(CO_ODF_arg_t *arg,
+					   int (*enable)(uint8_t))
 {
-	int err;
-	if (!gpio_is_ready_dt(&pressure_sw)) {
-		LOG_ERR("The pressure switch pin GPIO port is not ready.\n");
-		return; // CO_SDO_AB_GENERAL;
+	if (arg->reading) {
+		return CO_SDO_AB_NONE;
 	}
-	err = gpio_pin_configure_dt(&pressure_sw, GPIO_OUTPUT_INACTIVE);
-	if (err != 0) {
-		LOG_ERR("Configuring pressure switch GPIO pin failed: %d\n", err);
-		return; // CO_SDO_AB_GENERAL;
-	}
-	if (!gpio_is_ready_dt(&ultrasonic_sw)) {
-		LOG_ERR("The ultrasonic switch pin GPIO port is not ready.\n");
-		return; // CO_SDO_AB_GENERAL;
-	}
-	err = gpio_pin_configure_dt(&ultrasonic_sw, GPIO_OUTPUT_INACTIVE);
-	if (err != 0) {
-		LOG_ERR("Configuring ultrasonic switch GPIO pin failed: %d\n", err);
-		return; // CO_SDO_AB_GENERAL;
-	}
-	if (!gpio_is_ready_dt(&temperature_sw)) {
-		LOG_ERR("The temperature switch pin GPIO port is not ready.\n");
-		return; // CO_SDO_AB_GENERAL;
-	}
-	err = gpio_pin_configure_dt(&temperature_sw, GPIO_OUTPUT_INACTIVE);
-	if (err != 0) {
-		LOG_ERR("Configuring temperature switch GPIO pin failed: %d\n", err);
-		return; // CO_SDO_AB_GENERAL;
-	}
-}
-
-void us_pressure_func(void *d0, void *d1, void *d2) {
-	int err;
-	uint32_t channel = 0;
-	uint16_t buf;
-	struct adc_sequence sequence = {
-		.buffer = &buf,
-		.buffer_size = sizeof(buf),
-	};
-
-	if (!adc_is_ready_dt(&adc_channels[channel])) {
-		LOG_INF("ADC controller device %s not ready\n", adc_channels[channel].dev->name);
-		return;
-	}
-	err = adc_channel_setup_dt(&adc_channels[channel]);
-	if (err < 0) {
-		LOG_INF("Could not setup channel #%d (%d)\n", channel, err);
-		return;
-	}
-
-    while(us_pressure_loop) {
-		int32_t val_mv;
-		(void)adc_sequence_init_dt(&adc_channels[channel], &sequence);
-		err = adc_read_dt(&adc_channels[channel], &sequence);
-		if (err < 0) {
-			LOG_INF("Could not read (%d)\n", err);
-			continue;
-		}
-		val_mv = (int32_t)buf;
-		LOG_INF("%"PRId32, val_mv);
-
-		if (pressure_value != (uint32_t)(buf)) {
-			pressure_value = (uint32_t)(buf);
-			CO_LOCK_OD();
-			OD_pressureMeasurement = pressure_value;
-			CO_UNLOCK_OD();
-		}
-		if (OD_pressureDistanceMax != 0) {
-			CO_LOCK_OD();
-			OD_pressureDistance = (uint32_t)(OD_pressureDistanceMax/4096*OD_pressureMeasurement);
-			CO_UNLOCK_OD();
-		}
-        k_sleep(K_MSEC(OD_pressurePeriode));
-    }
-}
-
-void us_ultrasonic_func(void *d0, void *d1, void *d2) {
-
-    int ret;
-    struct sensor_value distance;
-    const struct device *dev;
-    dev = device_get_binding(DEVICE_DT_NAME(DT_NODELABEL(us0)));
-    if (dev == NULL) {
-        LOG_ERR("Failed to get HC-SR04 binding");
-        return;
-    }
-    while(us_ultrasonic_loop) {
-        ret = sensor_sample_fetch_chan(dev, SENSOR_CHAN_ALL);
-        switch (ret) {
-        case 0:
-            ret = sensor_channel_get(dev, SENSOR_CHAN_DISTANCE, &distance);
-            if (ret) {
-                LOG_ERR("sensor_channel_get for HC-SR04 failed ret %d", ret);
-                break;
-            }
-			if (ultrasonic_value != (uint32_t)((distance.val1*1000)+(distance.val2 / 1000))) {
-				ultrasonic_value = (uint32_t)((distance.val1*1000)+(distance.val2 / 1000));
-				CO_LOCK_OD();
-				OD_ultrasonicDistance = ultrasonic_value;
-				CO_UNLOCK_OD();
-			}
-            break;
-        case -EIO:
-            LOG_WRN("%s: Could not read device", dev->name);
-            break;
-        default:
-            LOG_ERR("Error when reading device: %s", dev->name);
-            break;
-        }
-        k_sleep(K_MSEC(OD_ultrasonicPeriode));
-    }
-}
-
-void w1_search_callback(struct w1_rom rom, void *user_data)
-{
-	LOG_INF("Device found; family: 0x%02x, serial: 0x%016llx", rom.family,
-		w1_rom_to_uint64(&rom));
-}
-
-void us_temperature_func(void *d0, void *d1, void *d2) {
-    const struct device *dev[2];
-	struct w1_rom w1rom[2];
-	struct sensor_value temp;
-	struct sensor_value value[2];
-    dev[0] = device_get_binding(DEVICE_DT_NAME(DT_NODELABEL(temp_0)));
-    dev[1] = device_get_binding(DEVICE_DT_NAME(DT_NODELABEL(temp_1)));
-
-	// const struct device *w1_dev = device_get_binding(DEVICE_DT_NAME(DT_NODELABEL(w1_0)));
-	// if (!device_is_ready(w1_dev)) {
-	// 	LOG_ERR("Device not ready");
-	// 	return;
-	// }
-	// int num_devices = w1_search_rom(w1_dev, w1_search_callback, NULL);
-	// LOG_INF("Number of devices found on bus: %d", num_devices);
-
-	uint64_t rom_address[2] = {0x281e1a4398230066,0x2872f7e062200123};
-    if (dev[0]==NULL || !device_is_ready(dev[0])) {
-        LOG_ERR("Failed to initialize temp_0");
-    }else{
-		w1_uint64_to_rom(rom_address[0], &w1rom[0]);
-		w1_rom_to_sensor_value(&w1rom[0], &value[0]);
-	}
-    if (dev[1]==NULL || !device_is_ready(dev[1])) {
-        LOG_ERR("Failed to initialize temp_1");
-    }else{
-		w1_uint64_to_rom(rom_address[1], &w1rom[1]);
-		w1_rom_to_sensor_value(&w1rom[1], &value[1]);
-	}
-	// bool set_update = false;
-    while(us_temperature_loop) {
-		//set_update = false;
-		for (int i=0;i<2;i++) {
-			if (dev[i]==NULL) {
-				continue;
-			}
-			sensor_attr_set(dev[i], SENSOR_CHAN_ALL, SENSOR_ATTR_W1_ROM, &value[i]);
-			if (sensor_sample_fetch(dev[i]) < 0) {
-				LOG_INF("Failed to fetch data from temp_%d with ROM %llx.\n", i, rom_address[i]);
-			} else {
-				sensor_channel_get(dev[i], SENSOR_CHAN_AMBIENT_TEMP, &temp);
-				LOG_INF("Temperature temp from temp_%d at ROM %llx: %d.%06d°C\n", i, rom_address[i], temp.val1, temp.val2);
-				temperature_value[i] = (int16_t)((temp.val1*1000)+(temp.val2 / 1000));
-				//set_update = true;
-				CO_LOCK_OD();
-				OD_temperatureValue[i] = temperature_value[i];
-				CO_UNLOCK_OD();
-			}
-		}
-		// if (set_update == true) {
-		// 	temperature_update = true;
-		// }
-        k_sleep(K_MSEC(OD_temperaturePeriode));
-    }
-}
-
-// Enable pressure thread
-static CO_SDO_abortCode_t odf_2102(CO_ODF_arg_t *odf_arg)
-{
-	uint8_t value;
-
-	value = *(odf_arg->data);
-	
-	if (!pressure_enable(value)) {
+	if (arg->data == NULL) {
 		return CO_SDO_AB_GENERAL;
 	}
-	return CO_SDO_AB_NONE;
+	return enable(*arg->data) == 0 ? CO_SDO_AB_NONE : CO_SDO_AB_GENERAL;
 }
 
-// Enable ultrasonic thread
-static CO_SDO_abortCode_t odf_2107(CO_ODF_arg_t *odf_arg)
+static CO_SDO_abortCode_t odf_2102(CO_ODF_arg_t *arg)
 {
-	uint8_t value;
-
-	value = *(odf_arg->data);
-
-	if (!ultrasonic_enable(value)) {
-		return CO_SDO_AB_GENERAL;
-	}
-    return CO_SDO_AB_NONE;
+	return set_sensor_enable(arg, pressure_enable);
 }
 
-// Enable temperature thread
-static CO_SDO_abortCode_t odf_2110(CO_ODF_arg_t *odf_arg)
+static CO_SDO_abortCode_t odf_2107(CO_ODF_arg_t *arg)
 {
-	uint8_t value;
-
-	value = *(odf_arg->data);
-	
-	if (!temperature_enable(value)) {
-		return CO_SDO_AB_GENERAL;
-	}
-    return CO_SDO_AB_NONE;
+	return set_sensor_enable(arg, ultrasonic_enable);
 }
 
-int pressure_enable(uint8_t value)
+static CO_SDO_abortCode_t odf_2110(CO_ODF_arg_t *arg)
 {
-	int err;
-
-	if (!gpio_is_ready_dt(&pressure_sw)) {
-		LOG_ERR("The pressure switch pin GPIO port is not ready.\n");
-		return -1;
-	}
-    if (value != 0) {
-		err = gpio_pin_set_dt(&pressure_sw, 1);
-		if (err != 0) {
-			LOG_ERR("Configuring pressure switch GPIO pin failed: %d\n", err);
-    		return -1;
-		}
-		us_pressure_loop = true;
-		us_pressure_tid = k_thread_create(&us_pressure_thread, us_pressure_stack_area,
-                                 K_THREAD_STACK_SIZEOF(us_pressure_stack_area),
-                                 us_pressure_func,
-                                 NULL, NULL, NULL,
-                                 K_LOWEST_APPLICATION_THREAD_PRIO, 0, K_NO_WAIT);
-	} else {
-		us_pressure_loop = false;
-		err = gpio_pin_set_dt(&pressure_sw, 0);
-		if (err != 0) {
-			LOG_ERR("Setting pressure switch GPIO pin level failed: %d\n", err);
-    		return -1;
-		}
-    }
-	return 0;
+	return set_sensor_enable(arg, temperature_enable);
 }
 
-int ultrasonic_enable(uint8_t value)
-{
-	int err;
-
-	if (!gpio_is_ready_dt(&ultrasonic_sw)) {
-		LOG_ERR("The ultrasonic switch pin GPIO port is not ready.\n");
-		return -1;
-	}
-    if (value != 0) {
-		err = gpio_pin_set_dt(&ultrasonic_sw, 1);
-		if (err != 0) {
-			LOG_ERR("Configuring ultrasonic switch GPIO pin failed: %d\n", err);
-    		return -1;
-		}
-		us_ultrasonic_loop = true;
-		us_ultrasonic_tid = k_thread_create(&us_ultrasonic_thread, us_ultrasonic_stack_area,
-                                 K_THREAD_STACK_SIZEOF(us_ultrasonic_stack_area),
-                                 us_ultrasonic_func,
-                                 NULL, NULL, NULL,
-                                 K_LOWEST_APPLICATION_THREAD_PRIO, 0, K_NO_WAIT);
-	} else {
-		us_ultrasonic_loop = false;
-		err = gpio_pin_set_dt(&ultrasonic_sw, 0);
-		if (err != 0) {
-			LOG_ERR("Setting ultrasonic switch GPIO pin level failed: %d\n", err);
-    		return -1;
-		}
-    }
-    return 0;
-}
-
-int temperature_enable(uint8_t value)
-{
-	int err;
-	
-	if (!gpio_is_ready_dt(&temperature_sw)) {
-		LOG_ERR("The temperature switch pin GPIO port is not ready.\n");
-		return -1;
-	}
-    if (value != 0) {
-		err = gpio_pin_set_dt(&temperature_sw, 1);
-		if (err != 0) {
-			LOG_ERR("Configuring temperature switch GPIO pin failed: %d\n", err);
-    		return -1;
-		}
-		us_temperature_loop = true;
-		us_temperature_tid = k_thread_create(&us_temperature_thread, us_temperature_stack_area,
-                                 K_THREAD_STACK_SIZEOF(us_temperature_stack_area),
-                                 us_temperature_func,
-                                 NULL, NULL, NULL,
-                                 K_LOWEST_APPLICATION_THREAD_PRIO, 0, K_NO_WAIT);
-	} else {
-		us_temperature_loop = false;
-		err = gpio_pin_set_dt(&temperature_sw, 0);
-		if (err != 0) {
-			LOG_ERR("Setting temperature switch GPIO pin level failed: %d\n", err);
-    		return -1;
-		}
-    }
-    return 0;
-}
 /**
- * @brief Main application entry point.
- *
- * The main application thread is responsible for initializing the
- * CANopen stack and doing the non real-time processing.
+ * @brief Initialize CANopen and perform non-real-time application processing.
  */
 int main(void)
 {
@@ -497,47 +103,47 @@ int main(void)
 	int64_t timestamp;
 #ifdef CONFIG_CANOPENNODE_STORAGE
 	int ret;
-#endif /* CONFIG_CANOPENNODE_STORAGE */
+#endif
 
 	can.dev = CAN_INTERFACE;
 	if (!device_is_ready(can.dev)) {
 		LOG_ERR("CAN interface not ready");
 		return 0;
 	}
+#if defined(CONFIG_BOARD_NATIVE_SIM)
+	native_sim_cistern_start();
+#endif
 
 #ifdef CONFIG_CANOPENNODE_STORAGE
-	LOG_INF("Initializing settings subsystem\n");
+	LOG_INF("Initializing settings subsystem");
 	ret = settings_subsys_init();
 	if (ret) {
-		LOG_ERR("failed to initialize settings subsystem (err = %d)",
-			ret);
-		int error = 0;
 		const struct flash_area *storage = NULL;
-		// Open the partition
+		int error;
+
+		LOG_ERR("failed to initialize settings subsystem (err = %d)", ret);
 		error = flash_area_open(PARTITION_ID(storage_partition), &storage);
 		if (error < 0) {
 			return error;
 		}
-
-		// Erase the first sector (e.g., 4KB)
 		error = flash_area_erase(storage, 0, PARTITION_SIZE(storage_partition));
+		flash_area_close(storage);
 		if (error < 0) {
 			return error;
 		}
 		sys_reboot(SYS_REBOOT_COLD);
 	}
-
 	ret = settings_load();
 	if (ret) {
 		LOG_ERR("failed to load settings (err = %d)", ret);
 		return 0;
 	}
-#endif /* CONFIG_CANOPENNODE_STORAGE */
+#endif
 
 	OD_powerOnCounter++;
 
 	while (reset != CO_RESET_APP) {
-		elapsed =  0U; /* milliseconds */
+		elapsed = 0U;
 
 		LOG_INF("CANopen stack initialize");
 		err = CO_init(&can, CONFIG_CANOPEN_NODE_ID, CAN_BITRATE);
@@ -546,13 +152,12 @@ int main(void)
 			return 0;
 		}
 		LOG_INF("CANopen stack initialized");
-
 #ifdef CONFIG_CANOPENNODE_STORAGE
 		canopen_storage_attach(CO->SDO[0], CO->em);
-#endif /* CONFIG_CANOPENNODE_STORAGE */
+#endif
 
-		config_leds(CO->NMT);
-		config_powerstates();
+		initialize();
+		led_configure(CO->NMT);
 		CO_OD_configure(CO->SDO[0], OD_2102_pressureEnable,
 				odf_2102, NULL, 0U, 0U);
 		CO_OD_configure(CO->SDO[0], OD_2107_ultrasonicEnable,
@@ -561,25 +166,64 @@ int main(void)
 				odf_2110, NULL, 0U, 0U);
 
 		if (IS_ENABLED(CONFIG_CANOPENNODE_PROGRAM_DOWNLOAD)) {
-			canopen_program_download_attach(CO->NMT, CO->SDO[0],
-							CO->em);
+			canopen_program_download_attach(CO->NMT, CO->SDO[0], CO->em);
 		}
 
+#if defined(CONFIG_BOARD_NATIVE_SIM)
+		/* Exercise pressure acquisition and TPDOs with the ADC emulator. */
+		OD_pressureEnable = 1U;
+#endif
 		pressure_enable(OD_pressureEnable);
 		ultrasonic_enable(OD_ultrasonicEnable);
 		temperature_enable(OD_temperatureEnable);
+		LOG_INF("Sensor acquisition tasks enabled (pressure=%u, ultrasonic=%u, temperature=%u)",
+			OD_pressureEnable, OD_ultrasonicEnable, OD_temperatureEnable);
 
+#if defined(CONFIG_BOARD_NATIVE_SIM)
+		const struct can_filter native_sim_wakeup_filter = {
+			.id = 0U,
+			.mask = 0U,
+		};
+		int native_sim_wakeup_filter_id =
+			can_add_rx_filter(can.dev, native_sim_can_bus_activity, NULL,
+					  &native_sim_wakeup_filter);
+
+		if (native_sim_wakeup_filter_id < 0) {
+			LOG_ERR("Failed to add native-sim CAN activity filter: %d",
+				native_sim_wakeup_filter_id);
+		}
+#endif
 		CO_CANsetNormalMode(CO->CANmodule[0]);
+		LOG_INF("CAN interface entered normal mode");
+#ifdef CONFIG_CANOPENNODE_STORAGE
 		struct sCO_OD_EEPROM eeprom_old = CO_OD_EEPROM;
+#endif
 
 		while (true) {
-			timeout = 1U; /* default timeout in milliseconds */
+			timeout = 1U;
+#if defined(CONFIG_BOARD_NATIVE_SIM)
+			timestamp = native_sim_monotonic_ms();
+#else
 			timestamp = k_uptime_get();
+#endif
 			reset = CO_process(CO, (uint16_t)elapsed, &timeout);
-
 			if (reset != CO_RESET_NOT) {
 				break;
 			}
+#if defined(CONFIG_BOARD_NATIVE_SIM)
+			/*
+			 * Process asynchronous PDOs here: native_sim does not reliably
+			 * run the CANopenNode timer-driven sync worker.
+			 */
+			native_sim_cistern_process();
+#endif
+			sensor_process();
+#if defined(CONFIG_BOARD_NATIVE_SIM)
+			CO_LOCK_OD();
+			CO_process_RPDO(CO, false);
+			CO_process_TPDO(CO, false, elapsed * 1000U);
+			CO_UNLOCK_OD();
+#endif
 
 			if (timeout > 0) {
 #ifdef CONFIG_CANOPENNODE_STORAGE
@@ -587,40 +231,51 @@ int main(void)
 				if (ret != 0) {
 					LOG_DBG("EEPROM changed, saving to flash");
 					memcpy(&eeprom_old, &CO_OD_EEPROM, sizeof(CO_OD_EEPROM));
-					ret = canopen_storage_save(
-						CANOPEN_STORAGE_EEPROM);
+					ret = canopen_storage_save(CANOPEN_STORAGE_EEPROM);
 					if (ret) {
 						LOG_ERR("failed to save EEPROM");
 					}
 				}
-#endif /* CONFIG_CANOPENNODE_STORAGE */
-				/*
-				 * Try to sleep for as long as the
-				 * stack requested and calculate the
-				 * exact time elapsed.
-				 */
+#endif
+				/* Sleep for the requested timeout and measure elapsed time. */
+#if defined(CONFIG_BOARD_NATIVE_SIM)
+				/* Keep stack time advancing despite coarse native clock ticks. */
+				uint32_t wait_ms = MAX(timeout, 10U);
+
+				(void)k_sem_take(&native_sim_can_rx_wakeup, K_MSEC(wait_ms));
+				elapsed = (uint32_t)(native_sim_monotonic_ms() - timestamp);
+				if (elapsed == 0U) {
+					elapsed = 1U;
+				}
+#else
 				k_sleep(K_MSEC(timeout));
 				elapsed = (uint32_t)k_uptime_delta(&timestamp);
+#endif
 			} else {
-				/*
-				 * Do not sleep, more processing to be
-				 * done by the stack.
-				 */
 				elapsed = 0U;
+#if defined(CONFIG_BOARD_NATIVE_SIM)
+				/* Let native UDP-CAN RX and virtual sensor tasks run. */
+				k_sleep(K_MSEC(1));
+				elapsed = (uint32_t)(native_sim_monotonic_ms() - timestamp);
+				if (elapsed == 0U) {
+					elapsed = 1U;
+				}
+#endif
 			}
 		}
 
-        us_pressure_loop = false;
-        us_ultrasonic_loop = false;
-        us_temperature_loop = false;
-
+		sensor_stop();
+#if defined(CONFIG_BOARD_NATIVE_SIM)
+		if (native_sim_wakeup_filter_id >= 0) {
+			can_remove_rx_filter(can.dev, native_sim_wakeup_filter_id);
+		}
+#endif
 		if (reset == CO_RESET_COMM) {
 			LOG_INF("Resetting communication");
 		}
 	}
 
 	LOG_INF("Resetting device");
-
 	CO_delete(&can);
 	sys_reboot(SYS_REBOOT_COLD);
 }
