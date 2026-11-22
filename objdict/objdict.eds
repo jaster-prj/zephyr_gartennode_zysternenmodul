@@ -5,11 +5,11 @@ FileRevision=1
 LastEDS=
 EDSVersion=4.0
 Description=
-CreationTime=2:52PM
-CreationDate=09-18-2019
+CreationTime=10:43PM
+CreationDate=11-22-2026
 CreatedBy=
-ModificationTime=9:47PM
-ModificationDate=03-27-2025
+ModificationTime=10:43PM
+ModificationDate=11-22-2026
 ModifiedBy=
 
 [DeviceInfo]
@@ -313,7 +313,7 @@ ObjectType=0x7
 ;StorageLocation=ROM
 DataType=0x0009
 AccessType=const
-DefaultValue=0.0.22
+DefaultValue=0.1.0
 PDOMapping=0
 
 [1010]
@@ -361,7 +361,7 @@ ObjectType=0x7
 ;StorageLocation=RAM
 DataType=0x0007
 AccessType=rw
-DefaultValue=0x00000008
+DefaultValue=0x00000001
 PDOMapping=0
 
 [1012]
@@ -1348,7 +1348,7 @@ ObjectType=0x7
 ;StorageLocation=ROM
 DataType=0x0007
 AccessType=rw
-DefaultValue=0x21060020
+DefaultValue=0x21090020
 PDOMapping=0
 
 [1A00sub3]
@@ -1417,7 +1417,7 @@ ObjectType=0x7
 ;StorageLocation=ROM
 DataType=0x0005
 AccessType=rw
-DefaultValue=1
+DefaultValue=2
 PDOMapping=0
 
 [1A01sub1]
@@ -1426,7 +1426,7 @@ ObjectType=0x7
 ;StorageLocation=ROM
 DataType=0x0007
 AccessType=rw
-DefaultValue=0x21090020
+DefaultValue=0x21120020
 PDOMapping=0
 
 [1A01sub2]
@@ -1435,7 +1435,7 @@ ObjectType=0x7
 ;StorageLocation=ROM
 DataType=0x0007
 AccessType=rw
-DefaultValue=0x00000000
+DefaultValue=0x21140020
 PDOMapping=0
 
 [1A01sub3]
@@ -1513,7 +1513,7 @@ ObjectType=0x7
 ;StorageLocation=ROM
 DataType=0x0007
 AccessType=rw
-DefaultValue=0x21120110
+DefaultValue=0x21190120
 PDOMapping=0
 
 [1A02sub2]
@@ -1522,7 +1522,7 @@ ObjectType=0x7
 ;StorageLocation=ROM
 DataType=0x0007
 AccessType=rw
-DefaultValue=0x21120210
+DefaultValue=0x21190220
 PDOMapping=0
 
 [1A02sub3]
@@ -1768,11 +1768,11 @@ ObjectType=0x7
 ;StorageLocation=ROM
 DataType=0x0007
 AccessType=rw
-DefaultValue=0x00000001
+DefaultValue=0x00000008
 PDOMapping=0
 
 [ManufacturerObjects]
-SupportedObjects=13
+SupportedObjects=20
 1=0x2100
 2=0x2101
 3=0x2102
@@ -1786,6 +1786,13 @@ SupportedObjects=13
 11=0x2110
 12=0x2111
 13=0x2112
+14=0x2113
+15=0x2114
+16=0x2115
+17=0x2116
+18=0x2117
+19=0x2118
+20=0x2119
 
 [2100]
 ParameterName=Error status bits
@@ -1817,7 +1824,7 @@ PDOMapping=1
 [2103]
 ParameterName=Pressure periode
 ObjectType=0x7
-;StorageLocation=RAM
+;StorageLocation=EEPROM
 DataType=0x0007
 AccessType=rw
 DefaultValue=100
@@ -1833,43 +1840,47 @@ DefaultValue=0
 PDOMapping=1
 
 [2105]
-ParameterName=Pressure distance max
+ParameterName=Pressure measurement range [mm]
 ObjectType=0x7
-;StorageLocation=RAM
-DataType=0x0005
-AccessType=wo
-DefaultValue=0
+;StorageLocation=EEPROM
+DataType=0x0007
+AccessType=rw
+DefaultValue=3000
 PDOMapping=1
 
 [2106]
-ParameterName=Pressure distance
+ParameterName=Pressure ZERO [mV]
 ObjectType=0x7
-;StorageLocation=RAM
+;StorageLocation=EEPROM
 DataType=0x0007
-AccessType=ro
+AccessType=rw
 DefaultValue=0
+LowLimit=0
+HighLimit=10000
 PDOMapping=1
 
 [2107]
-ParameterName=Ultrasonic enable
+ParameterName=Pressure SPAN [mV]
 ObjectType=0x7
-;StorageLocation=RAM
-DataType=0x0005
+;StorageLocation=EEPROM
+DataType=0x0007
 AccessType=rw
-DefaultValue=1
+DefaultValue=3300
+LowLimit=0
+HighLimit=10000
 PDOMapping=1
 
 [2108]
-ParameterName=Ultrasonic periode
+ParameterName=Pressure offset [mm]
 ObjectType=0x7
-;StorageLocation=RAM
+;StorageLocation=EEPROM
 DataType=0x0007
 AccessType=rw
-DefaultValue=100
+DefaultValue=0
 PDOMapping=1
 
 [2109]
-ParameterName=Ultrasonic distance
+ParameterName=Pressure distance [mm]
 ObjectType=0x7
 ;StorageLocation=RAM
 DataType=0x0007
@@ -1878,7 +1889,7 @@ DefaultValue=0
 PDOMapping=1
 
 [2110]
-ParameterName=Temperature enable
+ParameterName=Ultrasonic enable
 ObjectType=0x7
 ;StorageLocation=RAM
 DataType=0x0005
@@ -1887,21 +1898,67 @@ DefaultValue=1
 PDOMapping=1
 
 [2111]
-ParameterName=Temperature periode
+ParameterName=Ultrasonic periode
 ObjectType=0x7
-;StorageLocation=RAM
+;StorageLocation=EEPROM
 DataType=0x0007
 AccessType=rw
 DefaultValue=100
 PDOMapping=1
 
 [2112]
-ParameterName=Temperature value
+ParameterName=Ultrasonic measurement
+ObjectType=0x7
+;StorageLocation=RAM
+DataType=0x0007
+AccessType=ro
+DefaultValue=0
+PDOMapping=1
+
+[2113]
+ParameterName=Ultrasonic offset [mm]
+ObjectType=0x7
+;StorageLocation=EEPROM
+DataType=0x0007
+AccessType=rw
+DefaultValue=0
+PDOMapping=1
+
+[2114]
+ParameterName=Ultrasonic distance [mm]
+ObjectType=0x7
+;StorageLocation=RAM
+DataType=0x0007
+AccessType=ro
+DefaultValue=0
+PDOMapping=1
+
+[2115]
+ParameterName=Temperature enable
+ObjectType=0x7
+;StorageLocation=RAM
+DataType=0x0005
+AccessType=rw
+DefaultValue=1
+PDOMapping=1
+
+[2116]
+ParameterName=Temperature periode
+ObjectType=0x7
+;StorageLocation=EEPROM
+DataType=0x0007
+AccessType=rw
+DefaultValue=100
+PDOMapping=1
+
+[2117]
+ParameterName=Temperature raw
 ObjectType=0x8
 ;StorageLocation=RAM
 SubNumber=0x3
+PDOMapping=1
 
-[2112sub0]
+[2117sub0]
 ParameterName=max sub-index
 ObjectType=0x7
 ;StorageLocation=RAM
@@ -1910,20 +1967,88 @@ AccessType=ro
 DefaultValue=2
 PDOMapping=1
 
-[2112sub1]
-ParameterName=
+[2117sub1]
+ParameterName=Water temperature raw
 ObjectType=0x7
 ;StorageLocation=RAM
 DataType=0x0003
-AccessType=rw
+AccessType=ro
 DefaultValue=
 PDOMapping=1
 
-[2112sub2]
-ParameterName=
+[2117sub2]
+ParameterName=Cistern air temperature raw
 ObjectType=0x7
 ;StorageLocation=RAM
 DataType=0x0003
+AccessType=ro
+DefaultValue=
+PDOMapping=1
+
+[2118]
+ParameterName=Temperature DS18B20 ID
+ObjectType=0x8
+;StorageLocation=EEPROM
+SubNumber=0x3
+PDOMapping=0
+
+[2118sub0]
+ParameterName=max sub-index
+ObjectType=0x7
+;StorageLocation=RAM
+DataType=0x0005
+AccessType=ro
+DefaultValue=2
+PDOMapping=0
+
+[2118sub1]
+ParameterName=Water temperature DS18B20 ID
+ObjectType=0x7
+;StorageLocation=EEPROM
+DataType=0x001B
 AccessType=rw
+DefaultValue=
+PDOMapping=0
+
+[2118sub2]
+ParameterName=Cistern air temperature DS18B20 ID
+ObjectType=0x7
+;StorageLocation=EEPROM
+DataType=0x001B
+AccessType=rw
+DefaultValue=
+PDOMapping=0
+
+[2119]
+ParameterName=Temperature measurement
+ObjectType=0x8
+;StorageLocation=RAM
+SubNumber=0x3
+PDOMapping=1
+
+[2119sub0]
+ParameterName=max sub-index
+ObjectType=0x7
+;StorageLocation=RAM
+DataType=0x0005
+AccessType=ro
+DefaultValue=2
+PDOMapping=1
+
+[2119sub1]
+ParameterName=Water temperature measurement
+ObjectType=0x7
+;StorageLocation=RAM
+DataType=0x0008
+AccessType=ro
+DefaultValue=
+PDOMapping=1
+
+[2119sub2]
+ParameterName=Cistern air temperature measurement
+ObjectType=0x7
+;StorageLocation=RAM
+DataType=0x0008
+AccessType=ro
 DefaultValue=
 PDOMapping=1

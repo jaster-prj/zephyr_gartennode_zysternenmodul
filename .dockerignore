@@ -1,0 +1,5 @@
+.git
+build
+debug
+**/__pycache__
+*.pyc

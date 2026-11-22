@@ -27,7 +27,11 @@ int ultrasonic_measurement_read(void)
 	}
 
 	CO_LOCK_OD();
-	OD_ultrasonicDistance = (uint32_t)(distance.val1 * 1000 + distance.val2 / 1000);
+	int64_t measured_mm = (int64_t)distance.val1 * 1000 + distance.val2 / 1000;
+	OD_ultrasonicMeasurement = measured_mm > 0 ? (uint32_t)measured_mm : 0U;
+	OD_ultrasonicDistanceMm = OD_ultrasonicOffsetMm > OD_ultrasonicMeasurement
+					  ? OD_ultrasonicOffsetMm - OD_ultrasonicMeasurement
+					  : 0U;
 	CO_UNLOCK_OD();
 	return 0;
 }

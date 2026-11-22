@@ -19,6 +19,8 @@
 
 #include "led.h"
 #include "sensor.h"
+#include "update_control.h"
+#include "update_diagnostics.h"
 #if defined(CONFIG_BOARD_NATIVE_SIM)
 #include "native_sim_cistern.h"
 #endif
@@ -80,12 +82,12 @@ static CO_SDO_abortCode_t odf_2102(CO_ODF_arg_t *arg)
 	return set_sensor_enable(arg, pressure_enable);
 }
 
-static CO_SDO_abortCode_t odf_2107(CO_ODF_arg_t *arg)
+static CO_SDO_abortCode_t odf_2110(CO_ODF_arg_t *arg)
 {
 	return set_sensor_enable(arg, ultrasonic_enable);
 }
 
-static CO_SDO_abortCode_t odf_2110(CO_ODF_arg_t *arg)
+static CO_SDO_abortCode_t odf_2115(CO_ODF_arg_t *arg)
 {
 	return set_sensor_enable(arg, temperature_enable);
 }
@@ -160,13 +162,17 @@ int main(void)
 		led_configure(CO->NMT);
 		CO_OD_configure(CO->SDO[0], OD_2102_pressureEnable,
 				odf_2102, NULL, 0U, 0U);
-		CO_OD_configure(CO->SDO[0], OD_2107_ultrasonicEnable,
-				odf_2107, NULL, 0U, 0U);
-		CO_OD_configure(CO->SDO[0], OD_2110_temperatureEnable,
+		CO_OD_configure(CO->SDO[0], OD_2110_ultrasonicEnable,
 				odf_2110, NULL, 0U, 0U);
+		CO_OD_configure(CO->SDO[0], OD_2115_temperatureEnable,
+				odf_2115, NULL, 0U, 0U);
 
 		if (IS_ENABLED(CONFIG_CANOPENNODE_PROGRAM_DOWNLOAD)) {
 			canopen_program_download_attach(CO->NMT, CO->SDO[0], CO->em);
+			cistern_update_control_attach(CO->SDO[0]);
+#if defined(CONFIG_CISTERN_UPDATE_DIAGNOSTICS)
+			cistern_update_diagnostics_attach(CO->SDO[0]);
+#endif
 		}
 
 #if defined(CONFIG_BOARD_NATIVE_SIM)

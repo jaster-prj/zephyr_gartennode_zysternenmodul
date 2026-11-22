@@ -10,9 +10,12 @@
 #include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/adc/adc_emul.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/w1.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
+#include <canopennode.h>
+#include "native_sim_ds18b20.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -23,43 +26,41 @@ LOG_MODULE_REGISTER(native_sim_cistern, LOG_LEVEL_INF);
 
 #define INPUT_PORT 46005
 #define INPUT_PACKET_SIZE 96
-#define ADC_VREF_MV 3300
 #define ADC_MAX_RAW 4095
 
 static const struct adc_dt_spec pressure_adc =
 	ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), 0);
 struct cistern_inputs {
 	double level_mm;
-	double pressure_sensor_height;
-	double pressure_zero_voltage;
-	double pressure_span_voltage;
+	uint32_t pressure_adc_raw;
 	double ultrasonic_height;
 	double water_temperature;
 	double air_temperature;
+	uint64_t water_temperature_rom_id;
+	uint64_t air_temperature_rom_id;
 };
 
 static struct cistern_inputs inputs = {
 	.level_mm = 800.0,
-	.pressure_sensor_height = 20.0,
-	.pressure_zero_voltage = 0.0,
-	.pressure_span_voltage = 3.3,
+	.pressure_adc_raw = 1065,
 	.ultrasonic_height = 2600.0,
 	.water_temperature = 18.0,
 	.air_temperature = 20.0,
+	.water_temperature_rom_id = UINT64_C(0x2801000000000029),
+	.air_temperature_rom_id = UINT64_C(0x2802000000000070),
 };
 static int input_fd = -1;
 K_MUTEX_DEFINE(inputs_mutex);
 
 struct simulated_sensor_config {
 	enum sensor_channel channel;
-	uint8_t input_index;
 };
 
 struct simulated_sensor_data {
 	struct sensor_value value;
 };
 
-static int32_t simulated_values[3];
+static int32_t simulated_distance_mm;
 K_MUTEX_DEFINE(simulated_values_mutex);
 
 static int simulated_sensor_fetch(const struct device *dev, enum sensor_channel channel)
@@ -72,11 +73,7 @@ static int simulated_sensor_fetch(const struct device *dev, enum sensor_channel 
 		return -ENOTSUP;
 	}
 	k_mutex_lock(&simulated_values_mutex, K_FOREVER);
-	if (cfg->input_index == 0) {
-		micro = (int64_t)simulated_values[0] * 1000;
-	} else {
-		micro = (int64_t)simulated_values[cfg->input_index] * 1000;
-	}
+	micro = (int64_t)simulated_distance_mm * 1000;
 	k_mutex_unlock(&simulated_values_mutex);
 	return sensor_value_from_micro(&data->value, micro);
 }
@@ -99,37 +96,62 @@ static DEVICE_API(sensor, simulated_sensor_api) = {
 	.channel_get = simulated_sensor_channel_get,
 };
 
-#define DEFINE_SIMULATED_SENSOR(name, node_id, channel_id, index) \
+#define DEFINE_SIMULATED_SENSOR(name, node_id, channel_id) \
 	static struct simulated_sensor_data data_##name; \
 	static const struct simulated_sensor_config cfg_##name = { \
-		.channel = channel_id, .input_index = index \
+		.channel = channel_id \
 	}; \
 	SENSOR_DEVICE_DT_DEFINE(node_id, NULL, NULL, &data_##name, &cfg_##name, \
 				POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY, &simulated_sensor_api)
 
-DEFINE_SIMULATED_SENSOR(ultrasonic, DT_NODELABEL(us0), SENSOR_CHAN_DISTANCE, 0);
-DEFINE_SIMULATED_SENSOR(water_temp, DT_NODELABEL(temp_0), SENSOR_CHAN_AMBIENT_TEMP, 1);
-DEFINE_SIMULATED_SENSOR(air_temp, DT_NODELABEL(temp_1), SENSOR_CHAN_AMBIENT_TEMP, 2);
+DEFINE_SIMULATED_SENSOR(ultrasonic, DT_NODELABEL(us0), SENSOR_CHAN_DISTANCE);
 
 static void update_emulators(const struct cistern_inputs *state)
 {
 	double level = CLAMP(state->level_mm, 0.0, 2500.0);
-	double mount = CLAMP(state->pressure_sensor_height, 0.0, 2500.0);
-	double zero = CLAMP(state->pressure_zero_voltage, 0.0, 3.3);
-	double span = CLAMP(state->pressure_span_voltage, 0.0, 3.3);
-	double fraction = CLAMP((level - mount) / 3000.0, 0.0, 1.0);
-	uint32_t voltage_mv = (uint32_t)lround((zero + fraction * (span - zero)) * 1000.0);
-	uint32_t adc_raw = (voltage_mv * ADC_MAX_RAW + ADC_VREF_MV / 2) / ADC_VREF_MV;
 	uint32_t distance_mm = (uint32_t)MAX(0.0, state->ultrasonic_height - level);
-	int32_t water_temp_milli = (int32_t)lround(state->water_temperature * 1000.0);
-	int32_t air_temp_milli = (int32_t)lround(state->air_temperature * 1000.0);
-
-	(void)adc_emul_const_value_set(pressure_adc.dev, pressure_adc.channel_id, adc_raw);
+	(void)adc_emul_const_raw_value_set(pressure_adc.dev, pressure_adc.channel_id,
+					   state->pressure_adc_raw);
 	k_mutex_lock(&simulated_values_mutex, K_FOREVER);
-	simulated_values[0] = (int32_t)distance_mm;
-	simulated_values[1] = water_temp_milli;
-	simulated_values[2] = air_temp_milli;
+	simulated_distance_mm = (int32_t)distance_mm;
 	k_mutex_unlock(&simulated_values_mutex);
+	native_sim_ds18b20_set_temperature(0, state->water_temperature);
+	native_sim_ds18b20_set_temperature(1, state->air_temperature);
+}
+
+static void set_rom_input(const char *key, uint64_t rom_id)
+{
+	struct cistern_inputs snapshot;
+	size_t index;
+
+	k_mutex_lock(&inputs_mutex, K_FOREVER);
+	if (strcmp(key, "water_temperature_rom_id") == 0) {
+		inputs.water_temperature_rom_id = rom_id;
+		index = 0;
+	} else if (strcmp(key, "air_temperature_rom_id") == 0) {
+		inputs.air_temperature_rom_id = rom_id;
+		index = 1;
+	} else {
+		k_mutex_unlock(&inputs_mutex);
+		return;
+	}
+	snapshot = inputs;
+	k_mutex_unlock(&inputs_mutex);
+
+	if (native_sim_ds18b20_set_roms(snapshot.water_temperature_rom_id,
+					snapshot.air_temperature_rom_id) == 0) {
+		LOG_INF("Changed emulated DS18B20 hardware ROM in slot %u to 0x%016llx",
+			(unsigned int)index, (unsigned long long)rom_id);
+	}
+}
+
+static bool valid_ds18b20_rom_id(uint64_t rom_id)
+{
+	struct w1_rom rom;
+
+	w1_uint64_to_rom(rom_id, &rom);
+	return rom.family == 0x28 &&
+		rom.crc == w1_crc8((const uint8_t *)&rom, 7);
 }
 
 static void set_input(const char *key, double value)
@@ -142,12 +164,8 @@ static void set_input(const char *key, double value)
 	k_mutex_lock(&inputs_mutex, K_FOREVER);
 	if (strcmp(key, "level_mm") == 0) {
 		inputs.level_mm = value;
-	} else if (strcmp(key, "pressure_sensor_height") == 0) {
-		inputs.pressure_sensor_height = value;
-	} else if (strcmp(key, "pressure_zero_voltage") == 0) {
-		inputs.pressure_zero_voltage = value;
-	} else if (strcmp(key, "pressure_span_voltage") == 0) {
-		inputs.pressure_span_voltage = value;
+	} else if (strcmp(key, "pressure_adc_raw") == 0) {
+		inputs.pressure_adc_raw = (uint32_t)CLAMP(lround(value), 0, ADC_MAX_RAW);
 	} else if (strcmp(key, "ultrasonic_height") == 0) {
 		inputs.ultrasonic_height = value;
 	} else if (strcmp(key, "water_temperature") == 0) {
@@ -182,6 +200,21 @@ void native_sim_cistern_process(void)
 			continue;
 		}
 		*separator++ = '\0';
+		if (strcmp(packet, "water_temperature_rom_id") == 0 ||
+		    strcmp(packet, "air_temperature_rom_id") == 0) {
+			char *rom_end = NULL;
+			unsigned long long rom_id;
+
+			if (strlen(separator) != 16) {
+				continue;
+			}
+			rom_id = strtoull(separator, &rom_end, 16);
+			if (rom_end != separator && *rom_end == '\0' &&
+			    valid_ds18b20_rom_id((uint64_t)rom_id)) {
+				set_rom_input(packet, (uint64_t)rom_id);
+			}
+			continue;
+		}
 		char *end = NULL;
 		double value = strtod(separator, &end);
 		if (end != separator && (*end == '\0' || *end == '\n')) {
@@ -195,6 +228,10 @@ void native_sim_cistern_start(void)
 {
 	if (!adc_is_ready_dt(&pressure_adc)) {
 		LOG_ERR("Pressure ADC emulator is not ready");
+		return;
+	}
+	if (native_sim_ds18b20_init() != 0) {
+		LOG_ERR("Could not initialize virtual DS18B20 W1 devices");
 		return;
 	}
 	update_emulators(&inputs);

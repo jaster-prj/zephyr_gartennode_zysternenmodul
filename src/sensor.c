@@ -1,8 +1,3 @@
-#if defined(CONFIG_BOARD_NATIVE_SIM)
-#define _POSIX_C_SOURCE 200809L
-#include <time.h>
-#endif
-
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
@@ -55,7 +50,6 @@ static struct sensor_control sensors[] = {
 	},
 };
 
-#if !defined(CONFIG_BOARD_NATIVE_SIM)
 K_THREAD_STACK_ARRAY_DEFINE(sensor_stacks, SENSOR_COUNT, SENSOR_STACK_SIZE);
 static struct k_thread sensor_threads[SENSOR_COUNT];
 static bool threads_started;
@@ -84,8 +78,6 @@ static void sensor_thread(void *arg, void *unused1, void *unused2)
 		k_sleep(K_MSEC(MAX(period, 1U)));
 	}
 }
-#endif
-
 int sensor_init(void)
 {
 	int result = 0;
@@ -114,7 +106,6 @@ int sensor_init(void)
 			result = ret;
 		}
 	}
-#if !defined(CONFIG_BOARD_NATIVE_SIM)
 	if (!threads_started) {
 		for (size_t i = 0; i < ARRAY_SIZE(sensors); i++) {
 			k_thread_create(&sensor_threads[i], sensor_stacks[i],
@@ -124,7 +115,6 @@ int sensor_init(void)
 		}
 		threads_started = true;
 	}
-#endif
 	return result;
 }
 
@@ -170,25 +160,5 @@ void sensor_stop(void)
 
 void sensor_process(void)
 {
-#if defined(CONFIG_BOARD_NATIVE_SIM)
-	/*
-	 * Native-sim does not reliably schedule the target sensor workers.
-	 * Keep the existing 100 ms host-clock polling cadence.
-	 */
-	static int64_t last_sample_ms;
-	struct timespec now;
-	int64_t now_ms;
-
-	clock_gettime(CLOCK_MONOTONIC, &now);
-	now_ms = (int64_t)now.tv_sec * 1000 + now.tv_nsec / 1000000;
-	if (now_ms - last_sample_ms < 100) {
-		return;
-	}
-	last_sample_ms = now_ms;
-	for (size_t i = 0; i < ARRAY_SIZE(sensors); i++) {
-		if (atomic_get(&sensors[i].enabled)) {
-			(void)sensors[i].read();
-		}
-	}
-#endif
+	/* Sensor reads run on dedicated workers and must not block CANopen. */
 }

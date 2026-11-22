@@ -31,15 +31,35 @@
 		status = "okay";
 	};
 
-	/* Native-sim sensor models expose the same Zephyr sensor API as the target. */
+	/* Native-sim DS18B20 devices speak W1 through the UART emulator. */
 	us0: simulated-ultrasonic {
 		status = "okay";
 	};
-	temp_0: simulated-water-temperature {
+
+	uart_emul: uart-emul {
+		compatible = "zephyr,uart-emul";
+		current-speed = <115200>;
+		rx-fifo-size = <128>;
+		tx-fifo-size = <128>;
 		status = "okay";
-	};
-	temp_1: simulated-air-temperature {
-		status = "okay";
+
+		w1_0: w1-bus {
+			compatible = "zephyr,w1-serial";
+			status = "okay";
+
+			temp_0: ds18b200 {
+				compatible = "maxim,ds18b20";
+				family-code = <0x28>;
+				resolution = <12>;
+				status = "okay";
+			};
+			temp_1: ds18b201 {
+				compatible = "maxim,ds18b20";
+				family-code = <0x28>;
+				resolution = <12>;
+				status = "okay";
+			};
+		};
 	};
 };
 

@@ -55,8 +55,8 @@
    FILE INFO:
       FileName:     objdict.eds
       FileVersion:  1
-      CreationTime: 2:52PM
-      CreationDate: 09-18-2019
+      CreationTime: 10:43PM
+      CreationDate: 11-22-2026
       CreatedBy:    
 ******************************************************************************/
 
@@ -83,13 +83,13 @@
   #define CO_NO_LSS_CLIENT               0   //LSS Master
   #define CO_NO_RPDO                     4   //Associated objects: 14xx, 16xx
   #define CO_NO_TPDO                     4   //Associated objects: 18xx, 1Axx
-  #define CO_NO_NMT_MASTER               1
+  #define CO_NO_NMT_MASTER               0
 
 
 /*******************************************************************************
    OBJECT DICTIONARY
 *******************************************************************************/
-   #define CO_OD_NoOfElements             55
+   #define CO_OD_NoOfElements             62
 
 
 /*******************************************************************************
@@ -472,37 +472,63 @@
         #define OD_2104_pressureMeasurement                         0x2104
 
 /*2105 */
-        #define OD_2105_pressureDistanceMax                         0x2105
+        #define OD_2105_pressureMeasurementRangeMm                  0x2105
 
 /*2106 */
-        #define OD_2106_pressureDistance                            0x2106
+        #define OD_2106_pressureZeroMv                              0x2106
 
 /*2107 */
-        #define OD_2107_ultrasonicEnable                            0x2107
+        #define OD_2107_pressureSpanMv                              0x2107
 
 /*2108 */
-        #define OD_2108_ultrasonicPeriode                           0x2108
+        #define OD_2108_pressureOffsetMm                            0x2108
 
 /*2109 */
-        #define OD_2109_ultrasonicDistance                          0x2109
+        #define OD_2109_pressureDistanceMm                          0x2109
 
 /*2110 */
-        #define OD_2110_temperatureEnable                           0x2110
+        #define OD_2110_ultrasonicEnable                            0x2110
 
 /*2111 */
-        #define OD_2111_temperaturePeriode                          0x2111
+        #define OD_2111_ultrasonicPeriode                           0x2111
 
 /*2112 */
-        #define OD_2112_temperatureValue                            0x2112
+        #define OD_2112_ultrasonicMeasurement                       0x2112
 
-        #define OD_2112_0_temperatureValue_maxSubIndex              0
-        #define OD_2112_1_temperatureValue_                         1
-        #define OD_2112_2_temperatureValue_                         2
+/*2113 */
+        #define OD_2113_ultrasonicOffsetMm                          0x2113
+
+/*2114 */
+        #define OD_2114_ultrasonicDistanceMm                        0x2114
+
+/*2115 */
+        #define OD_2115_temperatureEnable                           0x2115
+
+/*2116 */
+        #define OD_2116_temperaturePeriode                          0x2116
+
+/*2117 */
+        #define OD_2117_temperatureRaw                               0x2117
+        #define OD_2117_0_temperatureRaw_maxSubIndex                0
+        #define OD_2117_1_temperatureRaw_water                      1
+        #define OD_2117_2_temperatureRaw_air                        2
+
+/*2118 */
+        #define OD_2118_temperatureDS18B20ID                         0x2118
+        #define OD_2118_0_temperatureDS18B20ID_maxSubIndex           0
+        #define OD_2118_1_temperatureDS18B20ID_water                 1
+        #define OD_2118_2_temperatureDS18B20ID_air                   2
+
+/*2119 */
+        #define OD_2119_temperatureMeasurement                      0x2119
+        #define OD_2119_0_temperatureMeasurement_maxSubIndex        0
+        #define OD_2119_1_temperatureMeasurement_water              1
+        #define OD_2119_2_temperatureMeasurement_air                2
 
 /*******************************************************************************
    STRUCTURES FOR VARIABLES IN DIFFERENT MEMORY LOCATIONS
 *******************************************************************************/
-#define  CO_OD_FIRST_LAST_WORD     0x55 //Any value from 0x01 to 0xFE. If changed, EEPROM will be reinitialized.
+#define  CO_OD_FIRST_LAST_WORD     0x56 //Any value from 0x01 to 0xFE. If changed, EEPROM will be reinitialized.
 
 /***** Structure for ROM variables ********************************************/
 struct sCO_OD_ROM{
@@ -514,7 +540,7 @@ struct sCO_OD_ROM{
 /*1007      */ UNSIGNED32      synchronousWindowLength;
 /*1008      */ VISIBLE_STRING  manufacturerDeviceName[24];
 /*1009      */ VISIBLE_STRING  manufacturerHardwareVersion[3];
-/*100a      */ VISIBLE_STRING  manufacturerSoftwareVersion[6];
+/*100a      */ VISIBLE_STRING  manufacturerSoftwareVersion[5];
 /*1012      */ UNSIGNED32      COB_ID_TIME;
 /*1014      */ UNSIGNED32      COB_ID_EMCY;
 /*1015      */ UNSIGNED16      inhibitTimeEMCY;
@@ -548,16 +574,14 @@ struct sCO_OD_RAM{
 /*1f57      */ UNSIGNED32      flashStatusIdentification[1];
 /*2100      */ OCTET_STRING    errorStatusBits[10];
 /*2102      */ UNSIGNED8       pressureEnable;
-/*2103      */ UNSIGNED32      pressurePeriode;
 /*2104      */ UNSIGNED32      pressureMeasurement;
-/*2105      */ UNSIGNED8       pressureDistanceMax;
-/*2106      */ UNSIGNED32      pressureDistance;
-/*2107      */ UNSIGNED8       ultrasonicEnable;
-/*2108      */ UNSIGNED32      ultrasonicPeriode;
-/*2109      */ UNSIGNED32      ultrasonicDistance;
-/*2110      */ UNSIGNED8       temperatureEnable;
-/*2111      */ UNSIGNED32      temperaturePeriode;
-/*2112      */ INTEGER16       temperatureValue[2];
+/*2109      */ UNSIGNED32      pressureDistanceMm;
+/*2110      */ UNSIGNED8       ultrasonicEnable;
+/*2112      */ UNSIGNED32      ultrasonicMeasurement;
+/*2114      */ UNSIGNED32      ultrasonicDistanceMm;
+/*2115      */ UNSIGNED8       temperatureEnable;
+/*2117      */ INTEGER16       temperatureRaw[2];
+/*2119      */ REAL32          temperatureMeasurement[2];
 
                UNSIGNED32     LastWord;
 };
@@ -567,6 +591,15 @@ struct sCO_OD_EEPROM{
                UNSIGNED32     FirstWord;
 
 /*2101      */ UNSIGNED32      powerOnCounter;
+/*2103      */ UNSIGNED32      pressurePeriode;
+/*2105      */ UNSIGNED32      pressureMeasurementRangeMm;
+/*2106      */ UNSIGNED32      pressureZeroMv;
+/*2107      */ UNSIGNED32      pressureSpanMv;
+/*2108      */ UNSIGNED32      pressureOffsetMm;
+/*2111      */ UNSIGNED32      ultrasonicPeriode;
+/*2113      */ UNSIGNED32      ultrasonicOffsetMm;
+/*2116      */ UNSIGNED32      temperaturePeriode;
+/*2118      */ UNSIGNED64      temperatureDS18B20ID[2];
 
                UNSIGNED32     LastWord;
 };
@@ -614,7 +647,7 @@ extern struct sCO_OD_EEPROM CO_OD_EEPROM;
 
 /*100a, Data Type: VISIBLE_STRING */
         #define OD_manufacturerSoftwareVersion                      CO_OD_ROM.manufacturerSoftwareVersion
-        #define ODL_manufacturerSoftwareVersion_stringLength        6
+        #define ODL_manufacturerSoftwareVersion_stringLength        5
 
 /*1010, Data Type: UNSIGNED32, Array[1] */
         #define OD_storeParameters                                  CO_OD_RAM.storeParameters
@@ -708,36 +741,61 @@ extern struct sCO_OD_EEPROM CO_OD_EEPROM;
         #define OD_pressureEnable                                   CO_OD_RAM.pressureEnable
 
 /*2103, Data Type: UNSIGNED32 */
-        #define OD_pressurePeriode                                  CO_OD_RAM.pressurePeriode
+        #define OD_pressurePeriode                                  CO_OD_EEPROM.pressurePeriode
 
 /*2104, Data Type: UNSIGNED32 */
         #define OD_pressureMeasurement                              CO_OD_RAM.pressureMeasurement
 
-/*2105, Data Type: UNSIGNED8 */
-        #define OD_pressureDistanceMax                              CO_OD_RAM.pressureDistanceMax
+/*2105, Data Type: UNSIGNED32 */
+        #define OD_pressureMeasurementRangeMm                       CO_OD_EEPROM.pressureMeasurementRangeMm
 
 /*2106, Data Type: UNSIGNED32 */
-        #define OD_pressureDistance                                 CO_OD_RAM.pressureDistance
+        #define OD_pressureZeroMv                                   CO_OD_EEPROM.pressureZeroMv
 
-/*2107, Data Type: UNSIGNED8 */
-        #define OD_ultrasonicEnable                                 CO_OD_RAM.ultrasonicEnable
+/*2107, Data Type: UNSIGNED32 */
+        #define OD_pressureSpanMv                                   CO_OD_EEPROM.pressureSpanMv
 
 /*2108, Data Type: UNSIGNED32 */
-        #define OD_ultrasonicPeriode                                CO_OD_RAM.ultrasonicPeriode
+        #define OD_pressureOffsetMm                                 CO_OD_EEPROM.pressureOffsetMm
 
 /*2109, Data Type: UNSIGNED32 */
-        #define OD_ultrasonicDistance                               CO_OD_RAM.ultrasonicDistance
+        #define OD_pressureDistanceMm                               CO_OD_RAM.pressureDistanceMm
 
 /*2110, Data Type: UNSIGNED8 */
-        #define OD_temperatureEnable                                CO_OD_RAM.temperatureEnable
+        #define OD_ultrasonicEnable                                 CO_OD_RAM.ultrasonicEnable
 
 /*2111, Data Type: UNSIGNED32 */
-        #define OD_temperaturePeriode                               CO_OD_RAM.temperaturePeriode
+        #define OD_ultrasonicPeriode                                CO_OD_EEPROM.ultrasonicPeriode
 
-/*2112, Data Type: INTEGER16, Array[2] */
-        #define OD_temperatureValue                                 CO_OD_RAM.temperatureValue
-        #define ODL_temperatureValue_arrayLength                    2
-        #define ODA_temperatureValue_                               0
+/*2112, Data Type: UNSIGNED32 */
+        #define OD_ultrasonicMeasurement                            CO_OD_RAM.ultrasonicMeasurement
+
+/*2113, Data Type: UNSIGNED32 */
+        #define OD_ultrasonicOffsetMm                               CO_OD_EEPROM.ultrasonicOffsetMm
+
+/*2114, Data Type: UNSIGNED32 */
+        #define OD_ultrasonicDistanceMm                             CO_OD_RAM.ultrasonicDistanceMm
+
+/*2117, Data Type: INTEGER16, Array[2] */
+        #define OD_temperatureRaw                                  CO_OD_RAM.temperatureRaw
+        #define ODL_temperatureRaw_arrayLength                     2
+        #define ODA_temperatureRaw_                                 0
+
+/*2118, Data Type: UNSIGNED64, Array[2] */
+        #define OD_temperatureDS18B20ID                            CO_OD_EEPROM.temperatureDS18B20ID
+        #define ODL_temperatureDS18B20ID_arrayLength                2
+        #define ODA_temperatureDS18B20ID_                           0
+
+/*2119, Data Type: REAL32, Array[2] */
+        #define OD_temperatureMeasurement                          CO_OD_RAM.temperatureMeasurement
+        #define ODL_temperatureMeasurement_arrayLength              2
+        #define ODA_temperatureMeasurement_                         0
+
+/*2115, Data Type: UNSIGNED8 */
+        #define OD_temperatureEnable                                CO_OD_RAM.temperatureEnable
+
+/*2116, Data Type: UNSIGNED32 */
+        #define OD_temperaturePeriode                               CO_OD_EEPROM.temperaturePeriode
 
 #endif
 // clang-format on
